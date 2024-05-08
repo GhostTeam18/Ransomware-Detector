@@ -1,6 +1,7 @@
 import os
 from telnetlib import IP, RCP
 import time
+import hashlib
 import threading
 import logging
 import requests
@@ -12,6 +13,8 @@ import tempfile
 import docker
 from scapy.all import sniff
 from concurrent.futures import ThreadPoolExecutor
+from typing import Union
+
 
 class RansomwareEvent:
     """Represents a ransomware event."""
@@ -204,7 +207,7 @@ class RansomwareDetector:
 
     def watch_directory(self):
         self.logger.debug('Starting directory watcher')
-        event_handler = self.SuspiciousFileHandler()
+        event_handler = self.SuspiciousFileHandler(self)  # Pass self as the detector
         observer = Observer()
         observer.schedule(event_handler, self.monitor_directory, recursive=False)
         observer.start()
@@ -213,37 +216,40 @@ class RansomwareDetector:
     class SuspiciousFileHandler(FileSystemEventHandler):
         """Handle events when a file is added to the monitor directory"""
 
+        def __init__(self, detector):
+            self.detector = detector
+
         def on_created(self, event):
             if event.is_directory:
-                self.logger.debug(f'Ignoring directory event: {event.src_path}')
+                self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
-                self.logger.debug(f'File created: {event.src_path}')
+                self.detector.logger.debug(f'File created: {event.src_path}')
 
                 # Check if the file is suspicious
-                if ransomware_detector.detect_suspicious_files(event.src_path):
-                    ransomware_detector.handle_suspicious_file(event.src_path)
+                if self.detector.detect_suspicious_files(event.src_path):
+                    self.detector.handle_suspicious_file(event.src_path)
 
         def on_modified(self, event):
             if event.is_directory:
-                self.logger.debug(f'Ignoring directory event: {event.src_path}')
+                self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
-                self.logger.debug(f'File modified: {event.src_path}')
+                self.detector.logger.debug(f'File modified: {event.src_path}')
 
                 # Check if the file is suspicious
-                if ransomware_detector.detect_suspicious_files(event.src_path):
-                    ransomware_detector.handle_suspicious_file(event.src_path)
+                if self.detector.detect_suspicious_files(event.src_path):
+                    self.detector.handle_suspicious_file(event.src_path)
 
         def on_deleted(self, event):
             if event.is_directory:
-                self.logger.debug(f'Ignoring directory event: {event.src_path}')
+                self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
-                self.logger.debug(f'File deleted: {event.src_path}')
+                self.detector.logger.debug(f'File deleted: {event.src_path}')
 
                 # Check if the file was suspicious
                 ransomware_event = RansomwareEvent(event.src_path, None, False)
-                if ransomware_event in ransomware_detector.recent_ransomware_events:
-                    ransomware_detector.recent_ransomware_events.remove(ransomware_event)
-                    self.logger.debug(f'File {event.src_path} was marked suspicious but is now deleted')
+                if ransomware_event in self.detector.recent_ransomware_events:
+                    self.detector.recent_ransomware_events.remove(ransomware_event)
+                    self.detector.logger.debug(f'File {event.src_path} was marked suspicious but is now deleted')
 
     def init_logging(self):
         # Initialize logging to a file
