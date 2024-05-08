@@ -1,13 +1,11 @@
-import sys
-import configparser
-from PySide2.QtCore import QThread
-from PySide2.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit, QPlainTextEdit, QGroupBox, QFileDialog, QWidget, QCheckBox, QPushButton
-from PySide2.QtCharts import QtCharts
-from PySide2.QtWidgets import QLabel, QLineEdit, QGridLayout, QGroupBox
-from PySide2.QtCore import Qt
-from PySide2 import QtWidgets
-from detector import FileChangeHandler, RansomwareDetector
+import detector
 from watchdog.observers import Observer
+from PySide2.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton, QLineEdit, QFileDialog, QPlainTextEdit, QHBoxLayout, QGridLayout
+from PySide2.QtCore import QThread, Qt
+from PySide2.QtCharts import QtCharts
+import sys
+from PySide2.QtWidgets import QApplication
+import configparser
 
 
 class SettingsWindow(QMainWindow):
@@ -45,7 +43,6 @@ class SettingsWindow(QMainWindow):
 
         directory_groupbox.setLayout(directory_layout)
         self.central_widget_layout.addWidget(directory_groupbox)
-
 
     def create_api_key_input_ui(self):
         api_key_groupbox = QGroupBox("API Key Settings")
@@ -110,19 +107,21 @@ class SettingsWindow(QMainWindow):
         monitor_directory = self.directory_label.text()
         api_keys = {service: input_widget.text() for service, input_widget in self.api_key_input_widgets.items()}
 
-        self.detector = RansomwareDetector(monitor_directory, **api_keys)
+        self.detector = detector.RansomwareDetector(monitor_directory, **api_keys)
         self.save_api_keys(api_keys)
 
         self.monitoring_thread = QThread(self)
         self.monitoring_thread.start()
 
         self.observer = Observer()
-        self.event_handler = FileChangeHandler(self.detector)
+        self.event_handler = detector.RansomwareDetector.SuspiciousFileHandler(self.detector)
         self.observer.schedule(self.event_handler, path=self.detector.monitor_directory, recursive=True)
         self.observer.start()
 
         self.threat_types = {}
         self.event_handler.threat_detected.connect(self.update_threat_types)
+
+    # ...
 
     def save_api_keys(self, api_keys):
         config = configparser.ConfigParser()

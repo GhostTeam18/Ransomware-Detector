@@ -147,7 +147,7 @@ class RansomwareDetector:
 
         return False
 
-    def analyze_file_virustotal(self, file_hash: str) -> dict or None:
+    def analyze_file_virustotal(self, file_hash: str) -> dict | None:
         url = f'https://www.virustotal.com/api/v3/files/{file_hash}'
         headers = {
             'x-apikey': self.virustotal_api_key,
@@ -164,7 +164,7 @@ class RansomwareDetector:
             self.logger.debug(f'VirusTotal error: {response.status_code}')
             return None
 
-    def analyze_file_metadefender(self, file_hash: str) -> dict or None:
+    def analyze_file_metadefender(self, file_hash: str) -> dict | None:
         url = 'https://metadefender.opswat.com/api/v2/file/hash'
         headers = {
             'Authorization': 'Bearer ' + self.metadefender_api_key,
