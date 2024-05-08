@@ -1,12 +1,10 @@
-import detector
-from watchdog.observers import Observer
-from PySide2.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QGroupBox, QLabel, QPushButton, QLineEdit, QFileDialog, QPlainTextEdit, QHBoxLayout, QGridLayout
-from PySide2.QtCore import QThread, Qt
-from PySide2.QtCharts import QtCharts
 import sys
-from PySide2.QtWidgets import QApplication
 import configparser
-
+from PySide2.QtCore import QThread, Qt
+from PySide2.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QLineEdit, QPlainTextEdit, QGroupBox, QFileDialog, QWidget, QCheckBox, QPushButton, QGridLayout
+from PySide2.QtCharts import QtCharts
+from detector import RansomwareDetector
+from watchdog.observers import Observer
 
 class SettingsWindow(QMainWindow):
     def __init__(self):
@@ -43,6 +41,7 @@ class SettingsWindow(QMainWindow):
 
         directory_groupbox.setLayout(directory_layout)
         self.central_widget_layout.addWidget(directory_groupbox)
+
 
     def create_api_key_input_ui(self):
         api_key_groupbox = QGroupBox("API Key Settings")
@@ -101,27 +100,27 @@ class SettingsWindow(QMainWindow):
 
     def start_monitoring(self):
         if not self.directory_label.text():
+            self.event_handler = RansomwareDetector.SuspiciousFileHandler(self.detector)
             print("Error: No directory selected")
             return
+
 
         monitor_directory = self.directory_label.text()
         api_keys = {service: input_widget.text() for service, input_widget in self.api_key_input_widgets.items()}
 
-        self.detector = detector.RansomwareDetector(monitor_directory, **api_keys)
+
+        self.detector = RansomwareDetector(monitor_directory, **api_keys)
         self.save_api_keys(api_keys)
 
-        self.monitoring_thread = QThread(self)
-        self.monitoring_thread.start()
 
         self.observer = Observer()
-        self.event_handler = detector.RansomwareDetector.SuspiciousFileHandler(self.detector)
+        self.event_handler = RansomwareDetector.SuspiciousFileHandler(self.detector)
         self.observer.schedule(self.event_handler, path=self.detector.monitor_directory, recursive=True)
         self.observer.start()
 
+
         self.threat_types = {}
         self.event_handler.threat_detected.connect(self.update_threat_types)
-
-    # ...
 
     def save_api_keys(self, api_keys):
         config = configparser.ConfigParser()
@@ -152,10 +151,9 @@ class SettingsWindow(QMainWindow):
         else:
             self.threat_types[threat_type] += 1
 
-        self.event_log.appendPlainText(f"Threat detected: {threat_type}")
-
-        if self.threat_types[threat_type] > 5:
-            self.event_log.appendPlainText(f"Threat {threat_type} has been detected more than 5 times. Alerting authorities.")
+        self.event_log.appendPlainText(f"Threat Detected: {threat_type}")
+        for threat, count in self.threat_types.items():
+            self.event_log.appendPlainText(f"{threat}: {count}")
 
     def create_dashboard_ui(self):
         dashboard_groupbox = QGroupBox("Dashboard")
@@ -167,11 +165,27 @@ class SettingsWindow(QMainWindow):
         self.dashboard_chart = QtCharts.QChartView()
         dashboard_layout.addWidget(self.dashboard_chart)
 
+        thor_lite_groupbox = QGroupBox("Thor Lite")
+        thor_lite_layout = QHBoxLayout()
+        self.thor_lite_checkbox = QCheckBox("Enable Thor Lite")
+        thor_lite_layout.addWidget(self.thor_lite_checkbox)
+        thor_lite_groupbox.setLayout(thor_lite_layout)
+        dashboard_layout.addWidget(thor_lite_groupbox)
+
         dashboard_groupbox.setLayout(dashboard_layout)
         self.central_widget_layout.addWidget(dashboard_groupbox)
 
-if __name__ == "__main__":
+    def closeEvent(self, event):
+        self.stop_monitoring()
+        event.accept()
+
+
+def main():
     app = QApplication(sys.argv)
-    window = SettingsWindow()
-    window.show()
+    main_window = SettingsWindow()
+    main_window.show()
     sys.exit(app.exec_())
+
+
+if __name__ == "__main__":
+    main()

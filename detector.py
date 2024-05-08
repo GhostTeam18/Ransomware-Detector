@@ -145,9 +145,17 @@ class RansomwareDetector:
             else:
                 self.logger.debug('No MetaDefender results found')
 
+            # Analyze the file with Docker and Thor Lite
+            self.logger.debug(f'Analyzing file with Docker and Thor Lite: {file_path}')
+            if self.analyze_file_docker(file_path):
+                self.logger.debug(f'Thor Lite detected ransomware!')
+                return True
+            else:
+                self.logger.debug('No Thor Lite results found')
+
         return False
 
-    def analyze_file_virustotal(self, file_hash: str) -> dict | None:
+    def analyze_file_virustotal(self, file_hash: str) -> Union[dict, None]:
         url = f'https://www.virustotal.com/api/v3/files/{file_hash}'
         headers = {
             'x-apikey': self.virustotal_api_key,
@@ -164,7 +172,7 @@ class RansomwareDetector:
             self.logger.debug(f'VirusTotal error: {response.status_code}')
             return None
 
-    def analyze_file_metadefender(self, file_hash: str) -> dict | None:
+    def analyze_file_metadefender(self, file_hash: str) -> Union[dict, None]:
         url = 'https://metadefender.opswat.com/api/v2/file/hash'
         headers = {
             'Authorization': 'Bearer ' + self.metadefender_api_key,
@@ -201,6 +209,57 @@ class RansomwareDetector:
             self.logger.debug(f'RansomwareHunter error: {response.status_code}')
             return False
 
+    def analyze_file_docker(self, file_path: str) -> bool:
+        """
+        Analyze a file for ransomware using Docker and Thor Lite.
+
+        Args:
+            file_path (str): The path of the file to analyze.
+
+        Returns:
+            bool: True if ransomware is detected, False otherwise.
+        """
+        try:
+            # Create a temporary directory
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Copy the file to the temporary directory
+                shutil.copy(file_path, tmpdir)
+
+                # Create a Docker client
+                client = docker.from_env()
+
+                # Create a Docker container
+                container = client.containers.run(
+                    'nextron-systems/thor-lite:latest',
+                    command=['/bin/sh', '-c', 'thor-lite /data'],
+                    detach=True,
+                    volumes={
+                        tmpdir: {'bind': '/data', 'mode': 'ro'}
+                    }
+                )
+
+                # Wait for the container to finish running
+                container.wait()
+
+                # Retrieve the results
+                output = container.logs().decode('utf-8')
+
+                # Delete the container
+                container.remove()
+
+                # Check if the output indicates that ransomware was detected
+                if 'Ransomware detected' in output:
+                    return True
+
+        except docker.errors.ContainerError as e:
+            # Handle container errors
+            self.logger.error(f"Container error: {e}")
+        except Exception as e:
+            # Handle other exceptions
+            self.logger.error(f"Error: {e}")
+
+        return False
+
     def handle_suspicious_file(self, file_path: str):
         # Notify the user about the suspicious file
         self.logger.debug(f'Found suspicious file: {file_path}')
@@ -213,13 +272,12 @@ class RansomwareDetector:
         observer.start()
         observer.join()
 
-    class SuspiciousFileHandler(FileSystemEventHandler):
-        """Handle events when a file is added to the monitor directory"""
+    class SuspiciousFileHandler(FileSystemEventHandler):"""Handle events when a file is added to the monitor directory"""
 
-        def __init__(self, detector):
+    def __init__(self, detector):
             self.detector = detector
 
-        def on_created(self, event):
+    def on_created(self, event):
             if event.is_directory:
                 self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
@@ -229,7 +287,7 @@ class RansomwareDetector:
                 if self.detector.detect_suspicious_files(event.src_path):
                     self.detector.handle_suspicious_file(event.src_path)
 
-        def on_modified(self, event):
+    def on_modified(self, event):
             if event.is_directory:
                 self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
@@ -239,7 +297,7 @@ class RansomwareDetector:
                 if self.detector.detect_suspicious_files(event.src_path):
                     self.detector.handle_suspicious_file(event.src_path)
 
-        def on_deleted(self, event):
+    def on_deleted(self, event):
             if event.is_directory:
                 self.detector.logger.debug(f'Ignoring directory event: {event.src_path}')
             else:
